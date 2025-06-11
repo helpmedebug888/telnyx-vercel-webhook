@@ -26,18 +26,24 @@ export default async function handler(req, res) {
     }
 
     const rawBody = (await getRawBody(req)).toString('utf-8');
-    const message = new TextEncoder().encode(timestamp + rawBody);
+
+    // --- NEW LINE: Trim the rawBody to remove potential whitespace issues ---
+    const trimmedRawBody = rawBody.trim();
+    // --- END NEW LINE ---
+
+    const message = new TextEncoder().encode(timestamp + trimmedRawBody); // Use trimmedRawBody here!
     const signature = Buffer.from(signatureHeader, 'base64');
 
     // --- ADDED LOGS FOR DEBUGGING ---
-    console.log('Raw Body (should match Telnyx signed body exactly):\n', rawBody);
-    console.log('Message to verify (timestamp + rawBody):\n', timestamp + rawBody);
-    console.log('Signature Buffer Length:', signature.length); // Should be 64 for Ed25519
+    console.log('Raw Body (original):\n', rawBody); // Keep original logged for comparison
+    console.log('Raw Body (trimmed):\n', trimmedRawBody); // Log trimmed version
+    console.log('Message to verify (timestamp + trimmedRawBody):\n', timestamp + trimmedRawBody);
+    console.log('Signature Buffer Length:', signature.length);
     // --- END ADDED LOGS ---
 
     const publicKeyBuffer = Buffer.from(PUBLIC_KEY_BASE64, 'base64');
     const publicKey = await subtle.importKey(
-      'raw', // Changed to 'raw'
+      'raw',
       publicKeyBuffer,
       { name: 'Ed25519', namedCurve: 'Ed25519' },
       false,
@@ -54,7 +60,7 @@ export default async function handler(req, res) {
       return res.status(403).json({ error: 'Invalid signature' });
     }
 
-    const payload = JSON.parse(rawBody);
+    const payload = JSON.parse(rawBody); // Use original rawBody for JSON parsing
     const event = payload.data?.event_type;
 
     if (event === 'call.initiated') {
