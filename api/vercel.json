@@ -1,6 +1,6 @@
 {
   "functions": {
-    "api/telnyx.js": {
+    "api/telnyx.mjs": {
       "runtime": "nodejs18.x",
       "maxDuration": 10
     }
