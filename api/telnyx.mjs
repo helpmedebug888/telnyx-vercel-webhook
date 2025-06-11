@@ -15,6 +15,12 @@ export default async function handler(req, res) {
     const signatureHeader = req.headers['telnyx-signature-ed25519'];
     const timestamp = req.headers['telnyx-timestamp'];
 
+    // --- ADDED LOGS FOR DEBUGGING ---
+    console.log('--- Webhook Debugging ---');
+    console.log('Received Signature Header:', signatureHeader);
+    console.log('Received Timestamp Header:', timestamp);
+    // --- END ADDED LOGS ---
+
     if (!signatureHeader || !timestamp) {
       return res.status(400).json({ error: 'Missing Telnyx signature headers' });
     }
@@ -23,9 +29,15 @@ export default async function handler(req, res) {
     const message = new TextEncoder().encode(timestamp + rawBody);
     const signature = Buffer.from(signatureHeader, 'base64');
 
+    // --- ADDED LOGS FOR DEBUGGING ---
+    console.log('Raw Body (should match Telnyx signed body exactly):\n', rawBody);
+    console.log('Message to verify (timestamp + rawBody):\n', timestamp + rawBody);
+    console.log('Signature Buffer Length:', signature.length); // Should be 64 for Ed25519
+    // --- END ADDED LOGS ---
+
     const publicKeyBuffer = Buffer.from(PUBLIC_KEY_BASE64, 'base64');
     const publicKey = await subtle.importKey(
-      'raw', // <--- CHANGED THIS FROM 'spki' TO 'raw'
+      'raw', // Changed to 'raw'
       publicKeyBuffer,
       { name: 'Ed25519', namedCurve: 'Ed25519' },
       false,
@@ -33,6 +45,10 @@ export default async function handler(req, res) {
     );
 
     const isValid = await subtle.verify('Ed25519', publicKey, signature, message);
+
+    // --- ADDED LOG FOR IS_VALID ---
+    console.log('Signature is valid:', isValid);
+    // --- END ADDED LOG ---
 
     if (!isValid) {
       return res.status(403).json({ error: 'Invalid signature' });
