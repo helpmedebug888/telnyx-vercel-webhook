@@ -1,7 +1,5 @@
-Trigger Vercel deploy
-
 import getRawBody from 'raw-body';
-import crypto from 'crypto';
+import { webcrypto } from 'crypto';
 
 export const config = {
   api: {
@@ -9,30 +7,32 @@ export const config = {
   },
 };
 
-const PUBLIC_KEY = process.env.TELNYX_PUBLIC_KEY; // from Telnyx portal
+const { subtle } = webcrypto;
+const PUBLIC_KEY_BASE64 = process.env.TELNYX_PUBLIC_KEY; // from Telnyx portal
 
 export default async function handler(req, res) {
   try {
-    const signature = req.headers['telnyx-signature-ed25519'];
+    const signatureHeader = req.headers['telnyx-signature-ed25519'];
     const timestamp = req.headers['telnyx-timestamp'];
 
-    if (!signature || !timestamp) {
+    if (!signatureHeader || !timestamp) {
       return res.status(400).json({ error: 'Missing Telnyx signature headers' });
     }
 
     const rawBody = (await getRawBody(req)).toString('utf-8');
-    const message = timestamp + rawBody;
+    const message = new TextEncoder().encode(timestamp + rawBody);
+    const signature = Buffer.from(signatureHeader, 'base64');
 
-    const isValid = crypto.verify(
-      null,
-      Buffer.from(message),
-      {
-        key: Buffer.from(PUBLIC_KEY, 'base64'),
-        format: 'der',
-        type: 'spki',
-      },
-      Buffer.from(signature, 'base64')
+    const publicKeyBuffer = Buffer.from(PUBLIC_KEY_BASE64, 'base64');
+    const publicKey = await subtle.importKey(
+      'spki',
+      publicKeyBuffer,
+      { name: 'Ed25519', namedCurve: 'Ed25519' },
+      false,
+      ['verify']
     );
+
+    const isValid = await subtle.verify('Ed25519', publicKey, signature, message);
 
     if (!isValid) {
       return res.status(403).json({ error: 'Invalid signature' });
@@ -47,13 +47,12 @@ export default async function handler(req, res) {
           { type: 'answer' },
           {
             type: 'connect',
-            to: 'sip:userhello58208@webrtc.telnyx.com'  // ✅ your SIP username
+            to: 'sip:userhello58208@webrtc.telnyx.com'
           }
         ]
       });
     }
 
-    // Return empty commands for unhandled events
     return res.status(200).json({ commands: [] });
 
   } catch (err) {
