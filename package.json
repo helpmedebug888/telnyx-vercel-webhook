@@ -1,0 +1,13 @@
+{
+  "name": "telnyx-vercel-webhook",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "dependencies": {
+    "raw-body": "^2.5.2"
+  },
+  "scripts": {
+    "start": "vercel dev",
+    "build": "vercel build"
+  }
+}
