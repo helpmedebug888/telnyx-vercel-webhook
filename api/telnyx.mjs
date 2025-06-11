@@ -25,7 +25,7 @@ export default async function handler(req, res) {
 
     const publicKeyBuffer = Buffer.from(PUBLIC_KEY_BASE64, 'base64');
     const publicKey = await subtle.importKey(
-      'spki',
+      'raw', // <--- CHANGED THIS FROM 'spki' TO 'raw'
       publicKeyBuffer,
       { name: 'Ed25519', namedCurve: 'Ed25519' },
       false,
