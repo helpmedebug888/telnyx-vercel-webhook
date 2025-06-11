@@ -3,81 +3,94 @@ import { webcrypto } from 'crypto';
 
 export const config = {
   api: {
-    bodyParser: false, // required for signature verification
+    bodyParser: false,   // must stay off
   },
 };
 
 const { subtle } = webcrypto;
-const PUBLIC_KEY_BASE64 = process.env.TELNYX_PUBLIC_KEY; // from Telnyx portal
+// raw Ed25519 public key from your env:
+const PUBLIC_KEY_RAW = Buffer.from(
+  process.env.TELNYX_PUBLIC_KEY.trim(),
+  'base64'
+);
 
 export default async function handler(req, res) {
   try {
-    const signatureHeader = req.headers['telnyx-signature-ed25519'];
+    const sigHeader = req.headers['telnyx-signature-ed25519'];
     const timestamp = req.headers['telnyx-timestamp'];
+    const contentLength = req.headers['content-length'];
 
-    console.log('--- Webhook Debugging ---');
-    console.log('Received Signature Header:', signatureHeader);
-    console.log('Received Timestamp Header:', timestamp);
+    console.log('Headers:', {
+      sigHeader,
+      timestamp,
+      contentLength,
+    });
 
-    if (!signatureHeader || !timestamp) {
-      return res.status(400).json({ error: 'Missing Telnyx signature headers' });
+    if (!sigHeader || !timestamp || !contentLength) {
+      return res.status(400).json({ error: 'Missing headers' });
     }
 
-    const rawBody = (await getRawBody(req)).toString('utf-8');
+    // read EXACT raw body
+    const rawBuf = await getRawBody(req, {
+      length: contentLength,
+      limit: '1mb',
+    });
+    const rawBody = rawBuf.toString('utf8');
 
-    let canonicalBody = rawBody;
+    // canonicalize (minify) JSON
+    let canonical = rawBody;
     try {
-        const parsedBody = JSON.parse(rawBody);
-        canonicalBody = JSON.stringify(parsedBody);
-    } catch (e) {
-        console.error('Failed to parse raw body as JSON, using original rawBody for verification.', e);
+      canonical = JSON.stringify(JSON.parse(rawBody));
+    } catch {
+      // if parsing fails, stick with rawBody
     }
 
-    // --- CRITICAL CHANGE HERE: ADDING THE PIPE CHARACTER ---
-    const message = new TextEncoder().encode(timestamp + '|' + canonicalBody); // <--- ADDED '|'
-    // --- END CRITICAL CHANGE ---
+    // build message = `${timestamp}|${canonical}`
+    const message = new TextEncoder().encode(`${timestamp}|${canonical}`);
+    const signature = Buffer.from(sigHeader, 'base64');
 
-    const signature = Buffer.from(signatureHeader, 'base64');
+    console.log('Raw body length:', rawBuf.byteLength);
+    console.log('Canonical length:', Buffer.byteLength(canonical, 'utf8'));
+    console.log('Message length:', message.byteLength);
+    console.log('Signature length:', signature.length);
+    console.log('Public key length:', PUBLIC_KEY_RAW.length);
 
-    console.log('Raw Body (original):\n', rawBody);
-    console.log('Raw Body (canonical/minified for verification):\n', canonicalBody);
-    console.log('Message to verify (timestamp + pipe + canonicalBody):\n', timestamp + '|' + canonicalBody); // Updated log message
-    console.log('Signature Buffer Length:', signature.length);
-
-    const publicKeyBuffer = Buffer.from(PUBLIC_KEY_BASE64, 'base64');
+    // import as raw Ed25519
     const publicKey = await subtle.importKey(
       'raw',
-      publicKeyBuffer,
-      { name: 'Ed25519', namedCurve: 'Ed25519' },
+      PUBLIC_KEY_RAW,
+      { name: 'Ed25519' },
       false,
       ['verify']
     );
 
-    const isValid = await subtle.verify('Ed25519', publicKey, signature, message);
+    const valid = await subtle.verify(
+      'Ed25519',
+      publicKey,
+      signature,
+      message
+    );
+    console.log('Signature valid?', valid);
 
-    console.log('Signature is valid:', isValid);
-
-    if (!isValid) {
+    if (!valid) {
       return res.status(403).json({ error: 'Invalid signature' });
     }
 
+    // at this point you can safely parse and respond
     const payload = JSON.parse(rawBody);
-    const event = payload.data?.event_type;
-
-    if (event === 'call.initiated') {
+    if (payload.data?.event_type === 'call.initiated') {
       return res.status(200).json({
         commands: [
           { type: 'answer' },
           {
             type: 'connect',
-            to: 'sip:userhello58208@webrtc.telnyx.com'
-          }
-        ]
+            to: 'sip:userhello58208@webrtc.telnyx.com',
+          },
+        ],
       });
     }
 
     return res.status(200).json({ commands: [] });
-
   } catch (err) {
     console.error('Webhook error:', err);
     return res.status(500).json({ error: 'Internal server error' });
