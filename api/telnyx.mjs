@@ -33,15 +33,15 @@ export default async function handler(req, res) {
         console.error('Failed to parse raw body as JSON, using original rawBody for verification.', e);
     }
 
-    // --- CRITICAL CHANGE HERE: ADDING THE PIPE CHARACTER ---
-    const message = new TextEncoder().encode(timestamp + '|' + canonicalBody); // <--- ADDED '|'
-    // --- END CRITICAL CHANGE ---
+    // --- This is the critical line with the pipe character ---
+    const message = new TextEncoder().encode(timestamp + '|' + canonicalBody);
+    // --- End critical line ---
 
     const signature = Buffer.from(signatureHeader, 'base64');
 
     console.log('Raw Body (original):\n', rawBody);
     console.log('Raw Body (canonical/minified for verification):\n', canonicalBody);
-    console.log('Message to verify (timestamp + pipe + canonicalBody):\n', timestamp + '|' + canonicalBody); // Updated log message
+    console.log('Message to verify (timestamp + pipe + canonicalBody):\n', timestamp + '|' + canonicalBody);
     console.log('Signature Buffer Length:', signature.length);
 
     const publicKeyBuffer = Buffer.from(PUBLIC_KEY_BASE64, 'base64');
@@ -55,17 +55,21 @@ export default async function handler(req, res) {
 
     const isValid = await subtle.verify('Ed25519', publicKey, signature, message);
 
-    console.log('Signature is valid:', isValid);
+    console.log('Signature is valid:', isValid); // This should be true now
 
     if (!isValid) {
       return res.status(403).json({ error: 'Invalid signature' });
     }
 
-    const payload = JSON.parse(rawBody);
+    const payload = JSON.parse(rawBody); // Use original rawBody or parsedBody for your application logic
     const event = payload.data?.event_type;
 
+    // --- Logs for Payload and Commands (from prior debugging step) ---
+    console.log('Parsed Payload (from rawBody):', payload);
+    console.log('Event Type:', event);
+
     if (event === 'call.initiated') {
-      return res.status(200).json({
+      const commandsToSend = {
         commands: [
           { type: 'answer' },
           {
@@ -73,9 +77,13 @@ export default async function handler(req, res) {
             to: 'sip:userhello58208@webrtc.telnyx.com'
           }
         ]
-      });
+      };
+      console.log('Sending commands to Telnyx:', JSON.stringify(commandsToSend));
+      return res.status(200).json(commandsToSend);
     }
+    // --- End Logs for Payload and Commands ---
 
+    console.log('No specific commands for this event type. Sending empty commands.');
     return res.status(200).json({ commands: [] });
 
   } catch (err) {
