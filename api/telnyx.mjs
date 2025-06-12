@@ -33,7 +33,10 @@ export default async function handler(req, res) {
         console.error('Failed to parse raw body as JSON, using original rawBody for verification.', e);
     }
 
+    // --- This is the critical line with the pipe character ---
     const message = new TextEncoder().encode(timestamp + '|' + canonicalBody);
+    // --- End critical line ---
+
     const signature = Buffer.from(signatureHeader, 'base64');
 
     console.log('Raw Body (original):\n', rawBody);
@@ -52,17 +55,17 @@ export default async function handler(req, res) {
 
     const isValid = await subtle.verify('Ed25519', publicKey, signature, message);
 
-    console.log('Signature is valid:', isValid);
+    console.log('Signature is valid:', isValid); // This should be true now
 
     if (!isValid) {
       return res.status(403).json({ error: 'Invalid signature' });
     }
 
-    const payload = JSON.parse(rawBody);
-
-    // --- ADDED LOGS FOR PAYLOAD AND COMMANDS ---
-    console.log('Parsed Payload (from rawBody):', payload);
+    const payload = JSON.parse(rawBody); // Use original rawBody or parsedBody for your application logic
     const event = payload.data?.event_type;
+
+    // --- Logs for Payload and Commands (from prior debugging step) ---
+    console.log('Parsed Payload (from rawBody):', payload);
     console.log('Event Type:', event);
 
     if (event === 'call.initiated') {
@@ -75,12 +78,12 @@ export default async function handler(req, res) {
           }
         ]
       };
-      console.log('Sending commands to Telnyx:', JSON.stringify(commandsToSend)); // Log the exact JSON being sent
+      console.log('Sending commands to Telnyx:', JSON.stringify(commandsToSend));
       return res.status(200).json(commandsToSend);
     }
-    // --- END ADDED LOGS ---
+    // --- End Logs for Payload and Commands ---
 
-    console.log('No specific commands for this event type. Sending empty commands.'); // Log when no specific commands are sent
+    console.log('No specific commands for this event type. Sending empty commands.');
     return res.status(200).json({ commands: [] });
 
   } catch (err) {
