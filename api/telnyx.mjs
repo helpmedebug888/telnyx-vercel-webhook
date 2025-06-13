@@ -73,7 +73,7 @@ export default async function handler(req, res) {
           { type: 'answer' },
           {
             type: 'connect',
-            to: 'sip:userhello58208@webrtc.telnyx.com',
+            to: 'sip:agent@34.85.204.67:5060', // <--- THIS LINE HAS BEEN UPDATED
           },
         ],
       });
